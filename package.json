@@ -1,7 +1,7 @@
 {
   "name": "axyum",
   "version": "1.0.0",
-  "description": "Headless browser based on JSDom and compatible with (most) puppeteer code-bases",
+  "description": "Headless browser compatible with most puppeteer code-bases, with proxies, fingerprints and chrome simulator",
   "main": "index.js",
   "type": "module",
   "scripts": {
@@ -14,18 +14,22 @@
   "keywords": [
     "headless",
     "browser",
-    "JSDOM",
+    "chrome",
     "puppeteer",
     "fast"
   ],
   "author": "JijaProGamer",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/JijaProGamer/AXYUM/issues"
+    "url": "https://github.com/JijaProGamer/AXYUM-2/issues"
   },
-  "homepage": "https://github.com/JijaProGamer/AXYUM#readme",
+  "homepage": "https://github.com/JijaProGamer/AXYUM-2#readme",
   "dependencies": {
+    "canvas": "^2.11.2",
     "got": "^12.6.0",
-    "jsdom": "^21.1.1"
+    "node-html-parser": "^6.1.5",
+    "proxy-agent-v2": "^1.0.3",
+    "tough-cookie": "^4.1.2",
+    "vm2": "^3.9.19"
   }
 }
