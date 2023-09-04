@@ -1,8 +1,8 @@
 import { parse } from 'node-html-parser';
-import { NodeVM, VM, VMScript } from "vm2";
 
 import { HTTPRequest } from "../Networking/index.js";
 import { Sandbox } from './sandbox.js';
+import { HTMLDocument } from "./sandboxClasses/HTMLDocument.js"
 
 class DOM {
     history = [];
@@ -16,20 +16,18 @@ class DOM {
     url;
     page;
 
-    consoleCounts = {};
-
     intervals = [];
     timeouts = [];
 
     runCode(code) {
         return new Promise((resolve, reject) => {
+            if(typeof code == "string"){
+                code = code.trim()
+
+                code = `() => {${code}}`
+            }
+            
             try {
-                if(typeof code == "string"){
-                    code = code.trim()
-
-                    code = `() => {${code}}`
-                }
-
                 let result = this.vm.run(`
                     try {
                         (${code})()
@@ -128,9 +126,9 @@ class DOM {
                 }
             }
             ).then((result) => {
-                this.document = parse(result.body/*.toString()*/, {
+                this.document = new HTMLDocument(this, parse(result.body/*.toString()*/, {
                     lowerCaseTagName: false
-                })
+                }))
 
                 this.sandbox.setDocument({
                     document: this.document,
@@ -147,13 +145,7 @@ class DOM {
         this.page = options.page;
         this.cookieJar = options.cookieJar;
 
-        this.vm = new VM({
-            allowAsync: true,
-            timeout: 1000,
-        });
-
         this.sandbox = new Sandbox({
-            vm: this.vm,
             DOM: this,
         })
     }

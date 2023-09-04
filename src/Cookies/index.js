@@ -1,4 +1,4 @@
-import { CookieJar } from "tough-cookie";
+import { Cookie, CookieJar, canonicalDomain } from "tough-cookie";
 
 const parseCookie = (rawCookie, domain) => {
     const cookie = {name: "", value: "", domain, path: "/", secure: false, httpOnly: false, sameSite: "Lax", expires: undefined};
@@ -57,7 +57,7 @@ class CookieHandler {
     #page
 
     constructor(url, page) {
-        this.#url = new URL(url).hostname
+        this.#url = canonicalDomain(new URL(url).hostname)
         this.#page = page
     }
 
@@ -78,7 +78,7 @@ class CookieHandler {
         const toughCookies = this.formatCookies(browserCookies);
 
         const cookieJar = CookieJar.deserializeSync({
-                rejectPublicSuffixes: true,
+                rejectPublicSuffixes: false,
                 cookies: toughCookies
         });
 
@@ -86,16 +86,16 @@ class CookieHandler {
     }
 
     async setCookies(rawCookies) {
-        const browserCookies = this.parseCookies(rawCookies);
-        for (let i = 0; i < browserCookies.length; i++) {
-            const cookie = browserCookies[i];
-            const badCookie = {
-                name: cookie.name,
-                domain: cookie.domain,
-                path: cookie.path
-            };
+        /*const browserCookies = this.parseCookies(rawCookies).map((v) => {console.log(v);return {
+            ...v, 
+            expires: v.expires * 1000,
+            domain: canonicalDomain(v.domain)
+        }});*/
 
-            await this.#page.deleteCookie(badCookie);
+        const browserCookies = rawCookies.map(Cookie.parse)
+        
+        for (let i = 0; i < browserCookies.length; i++) {
+            await this.#page.deleteCookie(browserCookies[i]);
         }
 
         await this.#page.setCookies(browserCookies);

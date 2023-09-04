@@ -1,6 +1,8 @@
 // https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
 
 class HTMLElement {    
+    childNodes = [];
+    
     accessKey;
     accessKeyLabel;
     attributeStyleMap;

@@ -1,8 +1,7 @@
-import { CookieJar } from "tough-cookie";
+import { CookieJar, Cookie, canonicalDomain } from "tough-cookie";
 import { DOM } from "../DOM/index.js";
 
 import { VM, VMScript } from "vm2";
-import { Cookie } from "tough-cookie";
 import { HTTPRequest } from "../Networking/index.js";
 
 class Page {
@@ -31,28 +30,21 @@ class Page {
   setViewport(viewport) { }
 
   screenshot(options) {
+    if (!options) { options = {} }
+
+    options = {
+      ...options, ...{
+        captureBeyondViewport: true,
+        clip: null,
+        encoding: "binary",
+        fromSurface: true,
+        fullPage: false,
+        omitBackground: false,
+      }
+    }
+
     return new Promise((resolve, reject) => {
-      /*if(!(this.#browser.options.executablePath && existsSync(this.#browser.options.executablePath)))
-        throw new Error("You need to provide executablePath at launch for the ability to screenshot")
-      
-      puppeteer.launch({
-        headless: "new",
-        executablePath: this.#browser.options.executablePath
-      }).then(async (browser) => {
-        try {
-          function cancel(err) {throw new Error(err)}
-
-          let page = await browser.newPage().catch(cancel)
-          await page.setJavaScriptEnabled(false).catch(cancel)
-          await page.setContent(this.#dom.serialize()).catch(cancel)
-
-          resolve(await page.screenshot(options).catch(cancel))
-
-          await browser.close().catch(cancel)
-        } catch (err) {
-          reject(err)
-        }
-      })*/
+      resolve();
     })
   }
 
@@ -82,10 +74,7 @@ class Page {
   }
 
   evaluate(func) {
-    if (typeof func !== "function")
-      throw new Error("AXYUM only supports evaluating function");
-
-    return runInContext(`(${func})()`, this.#vm)
+    return this.#dom.runCode(func)
   }
 
   $(selector) {
@@ -96,29 +85,53 @@ class Page {
 
   $x(Xpath) { }
 
-  setCookies(cookies) {
+  async setCookies(cookies) {
     let list = [];
     for (let cookie of cookies) {
       let newCookie = new Cookie(cookie);
 
       list.push(
-        this.#cookieJar.setCookie(
+        await this.#cookieJar.setCookie(
           newCookie,
-          `${newCookie.secure ? "https" : "http"}://www.${newCookie.domain}`
+          `https://youtube.com`
+          //`${newCookie.secure ? "https" : "http"}://${newCookie.domain}`
         )
       );
+    }
+
+    if (this.#dom.document) {
+      let host = new URL(this.#url).hostname
+      let domain = host.split('.').slice(-2).join('.')
+
+      await this.#cookieJar.setCookie(
+        "CONSENT=E; Expires=Wed, 03 Sep 2025 15:54:52 GMT; Domain=youtube.com; Path=/; Secure; hostOnly=?; aAge=?; cAge=30ms",
+        `https://youtube.com`
+      )
+
+      let hostCookies = (await this.#cookieJar.getCookies(host)).map((cookie) =>  `${cookie.key}=${cookie.value}`)
+      let domainCookies = (await this.#cookieJar.getCookies(domain)).map((cookie) =>  `${cookie.key}=${cookie.value}`)
+
+      this.#dom.document.cookie = [...hostCookies, ...domainCookies].join('; ')
+
+      console.log(1, this.#dom.document.cookie.length, this.#dom.document.cookie)
     }
 
     return Promise.all(list);
   }
 
-  deleteCookie(cookie) {
+  async deleteCookie(cookie) {
     let newCookie = new Cookie({
       name: cookie.name,
       domain: cookie.domain,
       path: cookie.path,
       expires: new Date(0),
     });
+
+    if (this.#dom.document) {
+      this.#dom.document.cookie = (await this.#cookieJar.getCookies(this.#url)).map((cookie) => {
+        return `${cookie.key}=${cookie.value}`;
+      }).join('; ')
+    }
 
     return this.#cookieJar.setCookie(
       newCookie,
@@ -138,8 +151,9 @@ class Page {
     }
 
     this.#url = url;
-    this.#cookieJar = new CookieJar(null);
-    this.setCookies(oldCookies);
+    this.#cookieJar = new CookieJar(null, {
+      rejectPublicSuffixes: false,
+    });
 
     return new Promise((resolve, reject) => {
       this.#dom?.kill()
@@ -154,39 +168,10 @@ class Page {
       this.#dom = dom
       this.#history.push(url);
 
+      this.setCookies(oldCookies);
       dom.navigate(url, this.#history)
         .then(resolve)
         .catch(reject)
-
-      /*
-      let newRequest = new HTTPRequest(
-        url,
-        this,
-        true,
-        "document",
-        "GET",
-        null,
-        this.#browser.proxy || "",
-        { // switch headers in the future
-          accept:
-            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng;q=0.8,application/signed-exchange;v=b3;q=0.7",
-          "accept-encoding": "gzip, deflate, br",
-          "accept-language": "ro-RO,ro;q=0.9,en-US;q=0.8,en;q=0.7,he;q=0.6",
-          "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36",
-          "upgrade-insecure-requests": "1",
-        },
-        (result) => {
-          console.log(result)
-          if (result.status < 200 || result.status > 299) {
-            reject(new Error("Server send non 2xx status code"))
-          } else {
-
-          }
-        }
-      );
-
-      this.emit("request", newRequest);*/
     });
   }
 

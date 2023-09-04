@@ -1,4 +1,7 @@
+import { VM } from "vm2";
+
 import { HTMLElement } from "./sandboxClasses/HTMLElement.js";
+import { Console } from "./baseSandboxClasses/console.js";
 
 function getAllChildNodes(node) {
     const nodes = [];
@@ -17,8 +20,15 @@ function getAllChildNodes(node) {
 let relations = {
     "stylesheet": "style",
     "modulepreload": "script",
-    "icon": "image"
+    "icon": "image",
+    "image_src": "image",
 }
+
+let banned_relations = [
+    "canonical",
+    "alternate",
+    "search"
+]
 
 class Sandbox {
     #vm;
@@ -33,12 +43,12 @@ class Sandbox {
             referer = undefined
 
         let url = content.href
-        if(url.startsWith("/")){
+        if (url.startsWith("/")) {
             url = url.slice(1)
             url = `${new URL(this.#DOM.url).origin}/${url}`
         }
 
-        if(url.startsWith("./")){
+        if (url.startsWith("./")) {
             url = url.slice(2)
             url = `${new URL(this.#DOM.url).origin}/${url}`
         }
@@ -69,20 +79,20 @@ class Sandbox {
         return new Promise((resolve, reject) => {
             let finished = 0
 
-            for (let toDownload of this.#toDownload) {
+            for (let [index, toDownload] of this.#toDownload.entries()) {
                 new Promise((resolve, reject) => {
                     this.downloadContent(toDownload).then((result) => {
-                        this.#resources[toDownload.href] = {...result, failed: false, ...toDownload}
+                        this.#resources[index] = { ...result, failed: false, ...toDownload }
                         resolve()
                     })
-                    .catch((err) => {
-                        this.#resources[toDownload.href] = {failed: true, ...toDownload}
-                        reject(err)
-                    })
+                        .catch((err) => {
+                            this.#resources[index] = { failed: true, ...toDownload }
+                            reject(err)
+                        })
                 })
-                .then(() => {})
-                .catch(() => {})
-                .finally(() => finished += 1)
+                    .then(() => { })
+                    .catch(() => { })
+                    .finally(() => finished += 1)
             }
 
             let interval = setInterval(() => {
@@ -102,39 +112,56 @@ class Sandbox {
 
             for (let node of nodes) {
                 if (node.tagName == "LINK") {
-                    this.#toDownload.push({
-                        type: relations[node.attributes.rel],
+                    if(banned_relations.includes(node.attributes.rel)) continue;
+
+                    let toDownloadData = {
+                        type: relations[node.attributes.rel] || node.attributes.rel,
                         href: node.attributes.href
-                    })
+                    }
+
+                    if(node.attributes.rel == "preload" && node.attributes.as == "script"){
+                        toDownloadData.type = "script"
+                    }
+
+                    this.#toDownload.push(toDownloadData)
                 }
             }
-            
+
             this.#vm.freeze(this.#DOM.document, "document")
             await this.downloadAllContent()
 
-            for(let [href, result] of Object.entries(this.#resources)){
+            for (let [index, download] of this.#toDownload.entries()) {
+                if (download.type !== "script") continue;
+                if (download.failed) continue;
+
+                await this.#DOM.runCode(this.#resources[index].body.toString()).catch(() => { })
+            }
+
+            /*for(let [href, result] of Object.entries(this.#resources)){
                 if(result.failed) continue;
                 if(result.type !== "script") continue;
 
                 await this.#DOM.runCode(result.body.toString()).catch(() => { })
-            }
+            }*/
 
             for (let node of nodes) {
                 if (node.tagName !== "SCRIPT") continue;
 
-                await this.#DOM.runCode(node.innerHTML).catch(() => { })
+                this.#DOM.runCode(node.innerHTML).catch(() => { })
             }
+
+            resolve()
         })
     }
 
     constructor(options) {
-        this.#vm = options.vm
         this.#DOM = options.DOM
 
         let vmSandbox = {
             location: {},
             HTMLElement,
             URL,
+            fetch: (url) => {console.log(url)},
             setInterval: (func, time) => {
                 let id = setInterval(() => this.runCode(func), time)
                 this.#DOM.intervals.push(id)
@@ -143,44 +170,30 @@ class Sandbox {
                 let id = setTimeout(() => this.runCode(func))
                 this.#DOM.timeouts.push(id)
             },
-            console: {
-                log: (...args) => {
-                    for (let arg of args) {
-                        this.#DOM.page.emit("console", { type: () => "info", text: () => arg })
-                    }
-                },
-                error: (...args) => {
-                    for (let arg of args) {
-                        this.#DOM.page.emit("console", { type: () => "error", text: () => arg })
-                    }
-                },
-                assert: (...args) => {
-                    if (!args.shift()) return;
+            console: new Console(this, this.#DOM, this.#vm),
+        } 
 
-                    for (let arg of args) {
-                        this.#DOM.page.emit("console", { type: () => "info", text: () => arg })
-                    }
-                },
-                count: (label = "default") => {
-                    if (!this.#DOM.consoleCounts[label])
-                        this.#DOM.consoleCounts[label] = 0
-
-                    this.#DOM.consoleCounts[label] += 1
-                    this.#DOM.page.emit("console", { type: () => "info", text: () => `${label}: ${this.#DOM.consoleCounts[label]}` })
-                } // add all console methods
-            }
-        }
-
-        for (let [name, value] of Object.entries(vmSandbox)) {
+        /*for (let [name, value] of Object.entries(vmSandbox)) {
             this.#vm.freeze(value, name)
-        }
+        }*/
+
+        this.#vm = new VM({
+            allowAsync: true,
+            timeout: 1000,
+            sandbox: vmSandbox
+        });
+
+        this.#DOM.vm = this.#vm
 
         this.#DOM.runCode(() => {
             window = globalThis = global
             global = undefined
         })
 
-        console.log(this.#DOM.runCode(() => HTMLElement.toString.toString()))
+        //this.#DOM.runCode(() => console.log(console.toString.toString()))
+
+        //this.#DOM.runCode(() => fetch("https://www.github.com").then(console.log))
+        //console.log(this.#DOM.runCode(() => HTMLElement.toString.toString()))
         //this.#DOM.runCode(() => {setInterval(() => console.log("OK!!"), 1000)} )
     }
 }
