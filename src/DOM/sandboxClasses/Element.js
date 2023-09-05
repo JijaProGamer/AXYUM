@@ -1,6 +1,6 @@
 // https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement
 
-class Element {    
+class Element extends Node {    
     accessKey;
     accessKeyLabel;
     attributeStyleMap;
@@ -32,21 +32,18 @@ class Element {
     translate;
     
     constructor() {
-        if (this.constructor == HTMLElement) {
+        if (this.constructor == Element) {
             throw new TypeError("Illegal constructor.")
         }
     }
 
-    attachInternals() {
-        throw new Error("You must call this on a initialized element.")
-    }
-
     static toString() {
-        return "function HTMLElement() {\n    [native code]\n}"
+        return "function Element() {\n    [native code]\n}"
     }
 }
 
-HTMLElement.prototype.toString = function() {
+Element.prototype.toString = function() {
     return "function toString() {\n    [native code]\n}"
 }
-export { HTMLElement }
+
+export { Element }
